@@ -125,7 +125,6 @@ def login_page():
             st.error("User not found. Please sign up first.")
         except Exception as e:
             st.error(f"Error: {e}")
-        st.rerun()
 
     # Add buttons to switch between login, signup, and reset password
     col1, col2, col3 = st.columns(3)
