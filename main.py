@@ -105,7 +105,6 @@ def send_password_reset(email):
         response = requests.post(url, json=data)
         response.raise_for_status()  # Raise an error for bad responses
         st.success(f"Password reset email sent to {email}")
-        st.rerun()
     except requests.exceptions.HTTPError as e:
         error_message = e.response.json().get('error', {}).get('message', 'An error occurred')
         st.error(f"Error: {error_message}")
