@@ -6,11 +6,23 @@ import google.generativeai as genai  # Use the correct import for Gemini-1.5-Fla
 from PIL import Image
 import io
 
-# Initialize Firebase Admin SDK
+# Initialize Firebase Admin SDK with credentials from Streamlit secrets
 if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase-adminsdk.json")
+    firebase_creds = {
+        "type": st.secrets["firebase"]["type"],
+        "project_id": st.secrets["firebase"]["project_id"],
+        "private_key_id": st.secrets["firebase"]["private_key_id"],
+        "private_key": st.secrets["firebase"]["private_key"].replace('\\n', '\n'),
+        "client_email": st.secrets["firebase"]["client_email"],
+        "client_id": st.secrets["firebase"]["client_id"],
+        "auth_uri": st.secrets["firebase"]["auth_uri"],
+        "token_uri": st.secrets["firebase"]["token_uri"],
+        "auth_provider_x509_cert_url": st.secrets["firebase"]["auth_provider_x509_cert_url"],
+        "client_x509_cert_url": st.secrets["firebase"]["client_x509_cert_url"]
+    }
+    cred = credentials.Certificate(firebase_creds)
     firebase_admin.initialize_app(cred, {
-        'storageBucket': 'tinytummy-13311.appspot.com'  # Use the correct bucket name without gs://
+        'storageBucket': 'tinytummy-13311.appspot.com'  # Correct bucket name
     })
 
 # Access the storage bucket
