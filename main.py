@@ -121,7 +121,6 @@ def login_page():
             if user:
                 # Now verify the password using Firebase REST API
                 verify_password(email, password)  # Custom function to check password
-                st.rerun
         except auth.UserNotFoundError:
             st.error("User not found. Please sign up first.")
         except Exception as e:
