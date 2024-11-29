@@ -354,43 +354,6 @@ def user_account_details():
                                        options=st.session_state['child_list'], 
                                        format_func=lambda child: f"{child['child_name']} (Age: {child['child_age']}, Gender: {child['child_gender']})")
 
-        st.subheader(f"{selected_child['child_name']}'s Nutrition Details")
-
-        # Retrieve meals for the selected child
-        meals = get_uploaded_meals(selected_child['child_name'])
-
-        # Debug output to check meals
-        st.write("Retrieved meals:", meals)
-
-        if meals is not None:
-            if meals:
-                # Organize meals by type and display them
-                meals_by_type = {meal_type: [] for meal_type in ["Breakfast", "Lunch", "Snacks", "Dinner"]}
-
-                for meal in meals:
-                    meals_by_type[meal['meal_type']].append(meal)
-
-                # Display meals by type
-                for meal_type, meal_list in meals_by_type.items():
-                    st.subheader(meal_type)
-                    if meal_list:
-                        for meal in meal_list:
-                            st.write(f"**Meal ID:** {meal['id']} - **Description:** {meal['description']} - **Time:** {meal['timestamp']}")
-                            # Option to delete the meal
-                            if st.button(f"Delete Meal {meal['id']}", key=f"delete_{meal['id']}"):
-                                if delete_meal(meal['id']):
-                                    st.success(f"Meal {meal['id']} deleted successfully.")
-                                    st.rerun()  # Refresh the page to show updated meals
-                                else:
-                                    st.error("Failed to delete the meal.")
-                    else:
-                        st.write("No meals recorded for this meal type.")
-            else:
-                st.write("No meals uploaded for this child yet.")
-        else:
-            st.error("Error retrieving meals. Please check your Firestore configuration.")
-
-
         if st.button("Go to Dashboard"):
             st.session_state['current_page'] = 'dashboard'
             st.rerun()
