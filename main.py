@@ -121,6 +121,7 @@ def login_page():
             if user:
                 # Now verify the password using Firebase REST API
                 verify_password(email, password)  # Custom function to check password
+                st.rerun
         except auth.UserNotFoundError:
             st.error("User not found. Please sign up first.")
         except Exception as e:
@@ -261,31 +262,6 @@ def input_image_setup(uploaded_file):
         st.error("No file uploaded. Please upload an image.")  # Graceful error message
         return None  # Return None instead of raising an exception
 
-
-def get_uploaded_meals(child_name):
-    """Retrieve the list of uploaded meals for the specified child from Firestore."""
-    meals = []
-    
-    try:
-        # Reference to the meals collection
-        meals_ref = db.collection('meals')  # Make sure to replace 'meals' with your actual collection name
-        query = meals_ref.where('child_name', '==', child_name).order_by('date', direction=firestore.Query.DESCENDING)
-
-        # Fetch the meals from Firestore
-        for doc in query.stream():
-            meal_data = doc.to_dict()
-            meals.append({
-                'id': doc.id,
-                'date': meal_data['date'],
-                'description': meal_data['description'],
-                'image_url': meal_data['image_url']
-            })
-    
-    except Exception as e:
-        print(f"Error retrieving meals: {e}")
-    
-    return meals
-
 def suggest_healthy_alternatives(response):
     """Suggest healthy alternatives based on the analysis response."""
     
@@ -308,18 +284,7 @@ def suggest_healthy_alternatives(response):
         return alternatives_response  # This will return the AI-generated suggestions
 
     return "No food items found for suggestions."
-
-def delete_meal(meal_id):
-    try:
-        # Reference to the Firestore collection where meals are stored
-        meals_ref = db.collection('meals').document(meal_id)
-        meals_ref.delete()
-        return True  # Return True on success
-    except Exception as e:
-        st.error(f"Failed to delete meal: {e}")
-        return False  # Return False on failure
-
-    
+  
 # Store meal data in Firestore
 def store_meal_data(category, image_data):
     # Add logic to store meal data in Firestore
@@ -414,21 +379,6 @@ def dashboard_page():
         
         # Display child details
         st.write(f"Tracking meals for {selected_child['child_name']} (Age: {selected_child['child_age']}, Gender: {selected_child['child_gender']})")
-
-        # Display uploaded meals
-        meals = get_uploaded_meals(selected_child['child_name'])  # Retrieve meals for the selected child
-
-        if meals:
-            st.subheader("Uploaded Meals")
-            for meal in meals:
-                st.write(f"Meal ID: {meal['id']}, Meal Description: {meal['description']}")  # Display meal info
-                # Button to delete the meal
-                if st.button(f"Delete Meal {meal['id']}"):
-                    if delete_meal(meal['id']):
-                        st.success(f"Meal {meal['id']} deleted successfully.")
-                        st.experimental_rerun()  # Refresh the page to show updated meals
-                    else:
-                        st.error("Failed to delete the meal.")
 
         # Image upload section
         st.subheader("Upload Meal Image")
