@@ -2,9 +2,10 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore, auth, storage
 import requests
-import google.generativeai as genai  # Use the correct import for Gemini-1.5-Flash
+import google.generativeai as genai
 from PIL import Image
 import io
+from datetime import datetime
 
 # Initialize Firebase Admin SDK with credentials from Streamlit secrets
 if not firebase_admin._apps:
@@ -32,8 +33,8 @@ storage_bucket = storage.bucket()
 db = firestore.client()
 
 # Session states for user authentication and navigation
-if 'user' not in st.session_state:
-    st.session_state['user'] = None
+if 'user_email' not in st.session_state:
+    st.session_state['user_email'] = None
 
 if 'child_list' not in st.session_state:
     st.session_state['child_list'] = []
@@ -117,12 +118,7 @@ def login_page():
 
     if st.button("Login"):
         try:
-            user = auth.get_user_by_email(email)  # This will raise an error if the user doesn't exist
-            if user:
-                # Now verify the password using Firebase REST API
-                verify_password(email, password)  # Custom function to check password
-        except auth.UserNotFoundError:
-            st.error("User not found. Please sign up first.")
+            verify_password(email, password)  # Custom function to check password
         except Exception as e:
             st.error(f"Error: {e}")
 
@@ -160,7 +156,7 @@ def verify_password(email, password):
         st.session_state['current_page'] = 'dashboard'  # Redirect to dashboard
         st.success("Login successful!")
         
-        # Optionally fetch user data or child list from Firestore
+        # Fetch user data or child list from Firestore
         user_doc = db.collection('users').document(email).get()
         if user_doc.exists:
             user_data = user_doc.to_dict()
@@ -173,7 +169,6 @@ def verify_password(email, password):
         st.error(f"Invalid password. Error: {error_message}")
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
-
 
 # Child details input page
 def child_details_page():
@@ -192,7 +187,7 @@ def child_details_page():
             st.session_state['child_list'].append(new_child)
             db.collection('users').document(st.session_state['user_email']).set({
                 "children": st.session_state['child_list']
-            })
+            }, merge=True)
             st.success("Child details saved successfully!")
             st.session_state['current_page'] = 'dashboard'
             st.rerun()
@@ -208,7 +203,7 @@ def delete_child(idx):
         st.session_state['child_list'].pop(idx)
         db.collection('users').document(st.session_state['user_email']).set({
             "children": st.session_state['child_list']
-        })
+        }, merge=True)
         st.success("Child deleted successfully!")
         st.rerun()
 
@@ -229,7 +224,7 @@ def edit_child_page(idx):
         }
         db.collection('users').document(st.session_state['user_email']).set({
             "children": st.session_state['child_list']
-        })
+        }, merge=True)
         st.success("Child details updated successfully!")
         st.session_state['current_page'] = 'user_account_details'
 
@@ -237,13 +232,14 @@ def edit_child_page(idx):
         st.session_state['current_page'] = 'user_account_details'
         st.rerun()
 
-api_key='AIzaSyAIMUJzYMflk5nB6TANPTOrXFoUR_Rr3HA'
+# Configure Gemini AI
+api_key = 'AIzaSyAwXzK6lBs_FjOGnGWQktf2_1S0-SVWRdE'
 genai.configure(api_key=api_key)
 
 def get_gemini_response(input_prompt, image):
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')  # Ensure the model name is correct
-        response = model.generate_content([input_prompt, image[0]])  # Assuming `image[0]` is the processed image part
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content([input_prompt, image[0]])
         return response.text
     except Exception as e:
         st.error(f"Error generating AI response: {e}")
@@ -258,20 +254,15 @@ def input_image_setup(uploaded_file):
         }]
         return image_parts
     else:
-        st.error("No file uploaded. Please upload an image.")  # Graceful error message
-        return None  # Return None instead of raising an exception
-
+        st.error("No file uploaded. Please upload an image.")
+        return None
 
 def get_uploaded_meals(child_name):
     """Retrieve the list of uploaded meals for the specified child from Firestore."""
     meals = []
-    
     try:
-        # Reference to the meals collection
-        meals_ref = db.collection('meals')  # Make sure to replace 'meals' with your actual collection name
+        meals_ref = db.collection('meals')
         query = meals_ref.where('child_name', '==', child_name).order_by('date', direction=firestore.Query.DESCENDING)
-
-        # Fetch the meals from Firestore
         for doc in query.stream():
             meal_data = doc.to_dict()
             meals.append({
@@ -280,55 +271,17 @@ def get_uploaded_meals(child_name):
                 'description': meal_data['description'],
                 'image_url': meal_data['image_url']
             })
-    
     except Exception as e:
-        print(f"Error retrieving meals: {e}")
-    
+        st.error(f"Error retrieving meals: {e}")
     return meals
-
-def suggest_healthy_alternatives(response):
-    """Suggest healthy alternatives based on the analysis response."""
-    
-    # Extract food items from the response
-    food_items = []  # This will be populated based on the response
-    lines = response.split("\n")  # Split response into lines
-    for line in lines:
-        if line.startswith("1. "):  # Assuming the response starts with numbered items
-            food_item = line.split("-")[0].strip().split(" ")[1:]  # Extract item name
-            food_items.append(" ".join(food_item))  # Join the name back to a single string
-
-    # Generate a prompt for AI to suggest alternatives
-    if food_items:
-        prompt = "For the following food items, please suggest healthy alternatives:\n"
-        prompt += "\n".join(food_items) + "\n\nProvide a list of healthy alternatives for each item."
-
-        # Call your AI model with this prompt
-        alternatives_response = get_gemini_response(prompt)
-
-        return alternatives_response  # This will return the AI-generated suggestions
-
-    return "No food items found for suggestions."
 
 def delete_meal(meal_id):
     try:
-        # Reference to the Firestore collection where meals are stored
-        meals_ref = db.collection('meals').document(meal_id)
-        meals_ref.delete()
-        return True  # Return True on success
+        db.collection('meals').document(meal_id).delete()
+        return True
     except Exception as e:
         st.error(f"Failed to delete meal: {e}")
-        return False  # Return False on failure
-
-    
-# Store meal data in Firestore
-def store_meal_data(category, image_data):
-    # Add logic to store meal data in Firestore
-    # Placeholder implementation
-    db.collection('meals').add({
-        "user_email": st.session_state['user_email'],
-        "category": category,
-        "image_data": image_data.getvalue()  # Save raw image data (ensure to handle appropriately)
-    })
+        return False
 
 def user_account_details():
     st.title("User Account Details")
@@ -348,67 +301,49 @@ def user_account_details():
         st.session_state['current_page'] = 'add_new_child'
         st.rerun()
 
-    # Check if there are any child details stored
-    if 'child_list' in st.session_state and st.session_state['child_list']:
-        selected_child = st.selectbox("Choose the child:", 
-                                       options=st.session_state['child_list'], 
-                                       format_func=lambda child: f"{child['child_name']} (Age: {child['child_age']}, Gender: {child['child_gender']})")
+    if st.button("Go to Dashboard"):
+        st.session_state['current_page'] = 'dashboard'
+        st.rerun()
 
-        if st.button("Go to Dashboard"):
-            st.session_state['current_page'] = 'dashboard'
-            st.rerun()
-
-        if st.button("Log Out"):
-            st.session_state['user_email'] = None
-            st.session_state['current_page'] = 'intro'
-            st.rerun()
+    if st.button("Log Out"):
+        st.session_state['user_email'] = None
+        st.session_state['current_page'] = 'intro'
+        st.rerun()
 
 def dashboard_page():
     st.title("Dashboard")
     st.write("Welcome to the Dashboard!")
     st.write("Here, you can track your child's meals and nutrition.")
 
-    # Show child selection dropdown if there are child details stored
     if st.session_state['child_list']:
         st.subheader("Select Child")
         selected_child = st.selectbox("Choose the child to track meals for:", 
                                        options=st.session_state['child_list'], 
                                        format_func=lambda child: f"{child['child_name']} (Age: {child['child_age']}, Gender: {child['child_gender']})")
         
-        # Display child details
         st.write(f"Tracking meals for {selected_child['child_name']} (Age: {selected_child['child_age']}, Gender: {selected_child['child_gender']})")
 
-        # Display uploaded meals
-        meals = get_uploaded_meals(selected_child['child_name'])  # Retrieve meals for the selected child
-
+        meals = get_uploaded_meals(selected_child['child_name'])
         if meals:
             st.subheader("Uploaded Meals")
             for meal in meals:
-                st.write(f"Meal ID: {meal['id']}, Meal Description: {meal['description']}")  # Display meal info
-                # Button to delete the meal
+                st.write(f"Meal ID: {meal['id']}, Meal Description: {meal['description']}")
                 if st.button(f"Delete Meal {meal['id']}"):
                     if delete_meal(meal['id']):
                         st.success(f"Meal {meal['id']} deleted successfully.")
-                        st.experimental_rerun()  # Refresh the page to show updated meals
+                        st.rerun()
                     else:
                         st.error("Failed to delete the meal.")
 
-        # Image upload section
         st.subheader("Upload Meal Image")
-        
-        # Dropdown for meal type selection
         meal_type = st.selectbox("Select Meal Type:", options=["Breakfast", "Lunch", "Snacks", "Dinner"])
-
         uploaded_image = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
         if uploaded_image:
             image = Image.open(uploaded_image)
             st.image(image, caption="Uploaded Image.", use_column_width=True)
-
-            # Reset the file pointer before analysis
             uploaded_image.seek(0)
 
-            # Button to analyze the image
             if st.button("Tell me about the calories"):
                 input_prompt = """
                 You are an expert nutritionist where you need to see the food items from the image
@@ -419,22 +354,16 @@ def dashboard_page():
                 ----
                 Finally, mention whether the food is healthy, balanced, or not healthy and suggest additional healthy food items.
                 """
-
                 try:
                     image_data = input_image_setup(uploaded_image)
-                    response = get_gemini_response(input_prompt, image=image_data)  # Ensure this matches your function signature
+                    response = get_gemini_response(input_prompt, image=image_data)
                     st.write(response)
                 except Exception as e:
                     st.error(f"Error analyzing the image: {e}")
 
-            # Reset the file pointer before uploading to Firebase
             uploaded_image.seek(0)
-
-            # Create a file name/path based on child's details and meal type
             file_name = f"{selected_child['child_name']}/age_{selected_child['child_age']}/gender_{selected_child['child_gender']}/{meal_type}/{uploaded_image.name}"
             blob = storage_bucket.blob(f"meal_images/{file_name}")
-
-            # Upload file to Firebase Storage
             try:
                 blob.upload_from_file(uploaded_image)
                 st.success(f"Image uploaded to Firebase under {file_name}")
@@ -444,7 +373,6 @@ def dashboard_page():
     else:
         st.error("No child details found. Please add child details first.")
 
-    # Add options to navigate to account details or logout
     if st.button("Go to Account Details"):
         st.session_state['current_page'] = 'user_account_details'
         st.rerun()
@@ -464,7 +392,7 @@ def main():
     elif st.session_state['current_page'] == 'child_details':
         child_details_page()
     elif st.session_state['current_page'] == 'user_account_details':
-        user_account_details()  # Ensure this function is defined
+        user_account_details()
     elif st.session_state['current_page'].startswith('edit_child_'):
         idx = int(st.session_state['current_page'].split('_')[-1])
         edit_child_page(idx)
